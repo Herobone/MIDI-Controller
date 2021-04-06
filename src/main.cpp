@@ -1,0 +1,623 @@
+#include <Arduino.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7735.h> // Hardware-specific library
+#include "PinConfig.h"
+#include "MIDIUSB.h"
+#include <FastLED.h>
+
+#pragma region MIDI
+// First parameter is the event type (0x09 = note on, 0x08 = note off).
+// Second parameter is note-on/note-off, combined with the channel.
+// Channel can be anything between 0-15. Typically reported to the user as 1-16.
+// Third parameter is the note number (48 = middle C).
+// Fourth parameter is the velocity (64 = normal, 127 = fastest).
+
+void noteOn(byte channel, byte pitch, byte velocity)
+{
+    midiEventPacket_t noteOn = {0x09, (uint8_t)(0x90 | channel), pitch, velocity};
+    MidiUSB.sendMIDI(noteOn);
+}
+
+void noteOff(byte channel, byte pitch, byte velocity)
+{
+    midiEventPacket_t noteOff = {0x08, (uint8_t)(0x80 | channel), pitch, velocity};
+    MidiUSB.sendMIDI(noteOff);
+}
+
+void controlChange(byte channel, byte control, byte value)
+{
+    midiEventPacket_t event = {0x0B, (uint8_t)(0xB0 | channel), control, value};
+    MidiUSB.sendMIDI(event);
+}
+#pragma endregion
+
+#define NUM_LEDS 5
+
+#define CHANNEL_COUNT 5
+
+#define CHAR_BASE_WIDTH 6
+#define CHAR_BASE_HEIGHT 8
+
+#define OPT_FONT_SIZE 3
+#define OPT_SPACING 5
+
+#define opt1X 20
+#define opt1Y 20
+
+#define opt2X opt1X + (CHAR_BASE_WIDTH * OPT_FONT_SIZE * 3) + OPT_SPACING
+#define opt2Y opt1Y
+
+#define opt3X opt1X
+#define opt3Y opt1Y + (CHAR_BASE_HEIGHT * OPT_FONT_SIZE) + OPT_SPACING
+
+#define opt4X opt2X
+#define opt4Y opt3Y
+
+#define COUNTER_MAX 10
+
+#define read7Bit(channel) map(analogRead(channel), 0, 1024, 0, 127)
+
+CRGBArray<NUM_LEDS> leds;
+
+#pragma region LCD
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+
+void drawText(char *text, uint16_t color, int size = 1, int x = 0, int y = 0)
+{
+    tft.setCursor(x, y);
+    tft.setTextSize((uint8_t)size);
+    tft.setTextColor(color);
+    tft.setTextWrap(true);
+    tft.print(text);
+}
+#pragma endregion
+
+#pragma region hardware
+volatile bool muteMap[CHANNEL_COUNT] = {false, false, false, false, false};
+volatile bool selectMap[CHANNEL_COUNT] = {false, false, false, false, false};
+
+uint8_t lastFaderState[CHANNEL_COUNT] = {0, 0, 0, 0, 0};
+uint8_t currentFaderState[CHANNEL_COUNT] = {0, 0, 0, 0, 0};
+
+uint8_t lastOptKnobStates[CHANNEL_COUNT][4];
+uint8_t currentOptKnobStates[CHANNEL_COUNT][4];
+
+volatile bool selectionChanged = false;
+volatile uint8_t forceDraw = 0;
+#pragma endregion
+
+bool singleChannelSelect = true;
+
+int counter = 0;
+
+void clearCounter()
+{
+    counter = COUNTER_MAX;
+}
+
+void changeState(uint8_t select)
+{
+    if (singleChannelSelect)
+    {
+        for (uint8_t i = 0; i < CHANNEL_COUNT; i++)
+        {
+            if (i != select)
+                selectMap[i] = false;
+        }
+    }
+    forceDraw = 4;
+
+    selectMap[select] = !selectMap[select];
+}
+
+void changeMute(uint8_t mute)
+{
+    if (muteMap[mute])
+    {
+        noteOn(0, mute * 6, 64);
+        muteMap[mute] = false;
+    }
+    else
+    {
+        noteOn(0, mute * 6, 127);
+        muteMap[mute] = true;
+    }
+}
+
+bool anySelected()
+{
+    bool ret = false;
+    for (uint8_t i = 0; i < CHANNEL_COUNT; i++)
+    {
+        ret |= selectMap[i];
+    }
+    return ret;
+}
+
+int getSelected()
+{
+    if (!singleChannelSelect)
+        return -1;
+
+    for (uint8_t i = 0; i < CHANNEL_COUNT; i++)
+    {
+        if (selectMap[i])
+            return i;
+    }
+    return -1;
+}
+
+void handleOptChange(uint8_t optChannel, uint8_t channel, uint8_t value)
+{
+    Serial.print("OPT");
+    Serial.print(optChannel);
+    Serial.print("@CH");
+    Serial.print(channel);
+    Serial.print(":");
+    Serial.println(value);
+    controlChange(0, channel * 6 + optChannel + 2, value);
+    clearCounter();
+}
+
+bool hasThisChanged(int then, int now)
+{
+    bool ret = (abs(then - now) >= 1) || forceDraw > 0;
+    if (forceDraw >= 1)
+    {
+        forceDraw--;
+    }
+    // Serial.println(forceDraw);
+    return ret;
+}
+
+volatile uint32_t debounceTime = 0;
+#define REQUIRED_FOR_DEBOUNCE 5
+void interruptButton()
+{
+    debounceTime = millis();
+    Serial.println("DOWN");
+}
+
+void interruptHandler49()
+{
+    if (!digitalRead(49))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            changeState(0);
+            selectionChanged = true;
+        }
+        else
+        {
+            Serial.println("Not long enough");
+            Serial.print("Soll:");
+            Serial.print(debounceTime + REQUIRED_FOR_DEBOUNCE);
+            Serial.print(" Ist:");
+            Serial.println(millis());
+        }
+    }
+}
+
+void interruptHandler50()
+{
+    if (!digitalRead(50))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            selectionChanged = true;
+            changeState(1);
+        }
+        else
+        {
+            Serial.println("Not long enough");
+        }
+    }
+}
+
+void interruptHandler51()
+{
+    if (!digitalRead(51))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            selectionChanged = true;
+            changeState(2);
+        }
+        else
+        {
+            Serial.println("Not long enough");
+        }
+    }
+}
+
+void interruptHandler52()
+{
+    if (!digitalRead(52))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            selectionChanged = true;
+            changeState(3);
+        }
+        else
+        {
+            Serial.println("Not long enough");
+        }
+    }
+}
+
+void interruptHandler53()
+{
+    if (!digitalRead(53))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            selectionChanged = true;
+            changeState(4);
+        }
+        else
+        {
+            Serial.println("Not long enough");
+        }
+    }
+}
+
+void interruptHandler48()
+{
+    if (!digitalRead(48))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            changeMute(0);
+        }
+        else
+        {
+            Serial.println("Not long enough");
+        }
+    }
+}
+
+void interruptHandler47()
+{
+    if (!digitalRead(47))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            changeMute(1);
+        }
+        else
+        {
+            Serial.println("Not long enough");
+        }
+    }
+}
+
+void interruptHandler46()
+{
+    if (!digitalRead(46))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            changeMute(2);
+        }
+        else
+        {
+            Serial.println("Not long enough");
+        }
+    }
+}
+
+void interruptHandler45()
+{
+    if (!digitalRead(45))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            changeMute(3);
+        }
+        else
+        {
+            Serial.println("Not long enough");
+        }
+    }
+}
+
+void interruptHandler44()
+{
+    if (!digitalRead(44))
+    {
+        interruptButton();
+    }
+    else
+    {
+        Serial.println("UP");
+        if (millis() - debounceTime > REQUIRED_FOR_DEBOUNCE)
+        {
+            changeMute(4);
+        }
+        else
+        {
+            Serial.println("Not long enough");
+        }
+    }
+}
+
+void setup()
+{
+    Serial.begin(9600);
+
+    pinMode(TFT_BACKLIGHT, OUTPUT);
+    digitalWrite(TFT_BACKLIGHT, HIGH); // Backlight on
+
+    tft.initR(INITR_BLACKTAB); // Init ST7735S chip, black tab
+    tft.fillScreen(ST77XX_BLACK);
+
+    FastLED.addLeds<WS2812B, LED_PIN>(leds, NUM_LEDS);
+
+    tft.setRotation(3);
+
+    // large block of text
+    tft.fillScreen(ST77XX_BLACK);
+    drawText((char *)"Herobone MIDI Controller", ST77XX_WHITE, 2);
+
+    pinMode(49, INPUT_PULLUP);
+    pinMode(50, INPUT_PULLUP);
+    pinMode(51, INPUT_PULLUP);
+    pinMode(52, INPUT_PULLUP);
+    pinMode(53, INPUT_PULLUP);
+    pinMode(44, INPUT_PULLUP);
+    pinMode(45, INPUT_PULLUP);
+    pinMode(46, INPUT_PULLUP);
+    pinMode(47, INPUT_PULLUP);
+    pinMode(48, INPUT_PULLUP);
+
+    delay(100);
+
+    attachInterrupt(49, interruptHandler49, CHANGE);
+    attachInterrupt(50, interruptHandler50, CHANGE);
+    attachInterrupt(51, interruptHandler51, CHANGE);
+    attachInterrupt(52, interruptHandler52, CHANGE);
+    attachInterrupt(53, interruptHandler53, CHANGE);
+    attachInterrupt(44, interruptHandler44, CHANGE);
+    attachInterrupt(45, interruptHandler45, CHANGE);
+    attachInterrupt(46, interruptHandler46, CHANGE);
+    attachInterrupt(47, interruptHandler47, CHANGE);
+    attachInterrupt(48, interruptHandler48, CHANGE);
+
+    // fade everything out
+    leds.fadeToBlackBy(255);
+    analogReadResolution(7);
+    FastLED.setBrightness(100);
+
+    for (uint8_t i = 0; i < CHANNEL_COUNT; i++)
+    {
+        muteMap[i] = false;
+        selectMap[i] = false;
+        for (uint8_t u = 0; u < 4; u++)
+        {
+            lastOptKnobStates[i][u] = 0;
+            currentOptKnobStates[i][u] = 0;
+        }
+    }
+
+    tft.fillScreen(ST77XX_BLACK);
+    drawText((char *)"Controller Ready", 0xFFFF);
+    delay(500);
+    tft.fillScreen(0x0000);
+    // String stuff = "Xmin: " + String(opt1X) + " Ymin: " + String(opt1Y) + " Xmax: " + String(opt4X + CHAR_BASE_WIDTH * OPT_FONT_SIZE * 3) + " Ymax: " + String(opt4Y + CHAR_BASE_HEIGHT * OPT_FONT_SIZE);
+    // Serial.println(stuff.c_str());
+}
+
+void loop()
+{
+    /*Serial.println("Sending note on");
+    noteOn(0, 48, 64); // Channel 0, middle C, normal velocity
+    MidiUSB.flush();
+    delay(500);
+    Serial.println("Sending note off");
+    noteOff(0, 48, 64); // Channel 0, middle C, normal velocity
+    MidiUSB.flush();
+    delay(1500); */
+
+    currentFaderState[0] = 127 - analogRead(A0);
+    currentFaderState[1] = 127 - analogRead(A1);
+    currentFaderState[2] = 127 - analogRead(A2);
+    currentFaderState[3] = 127 - analogRead(A3);
+    currentFaderState[4] = 127 - analogRead(A4);
+
+    delay(25);
+
+    /*leds[4] = CHSV(currentFaderState[0], 255, 255);
+    leds[3] = CHSV(currentFaderState[1], 255, 255);
+    leds[2] = CHSV(currentFaderState[2], 255, 255);
+    leds[1] = CHSV(currentFaderState[3], 255, 255);
+    leds[0] = CHSV(currentFaderState[4], 255, 255);*/
+
+    for (uint8_t i = 0; i < CHANNEL_COUNT; i++)
+    {
+        if (!muteMap[i])
+        {
+            if (abs(currentFaderState[i] - lastFaderState[i]) >= 1)
+            {
+                Serial.print("CH");
+                Serial.print(i);
+                Serial.print(":");
+                Serial.println(currentFaderState[i]);
+                lastFaderState[i] = currentFaderState[i];
+                controlChange(0, i * 6 + 1, currentFaderState[i]);
+            }
+        }
+    }
+
+    leds[4] = CRGB(((int)muteMap[0]) * 255, 0, ((int)selectMap[0]) * 128);
+    leds[3] = CRGB(((int)muteMap[1]) * 255, 0, ((int)selectMap[1]) * 128);
+    leds[2] = CRGB(((int)muteMap[2]) * 255, 0, ((int)selectMap[2]) * 128);
+    leds[1] = CRGB(((int)muteMap[3]) * 255, 0, ((int)selectMap[3]) * 128);
+    leds[0] = CRGB(((int)muteMap[4]) * 255, 0, ((int)selectMap[4]) * 128);
+    FastLED.show();
+
+    if (selectionChanged)
+    {
+        String displayText = "";
+        if (selectMap[0])
+        {
+            displayText += "CH0";
+        }
+
+        if (selectMap[1])
+        {
+            if (displayText.length() > 0)
+            {
+                displayText += ", ";
+            }
+
+            displayText += "CH1";
+        }
+
+        if (selectMap[2])
+        {
+            if (displayText.length() > 0)
+            {
+                displayText += ", ";
+            }
+
+            displayText += "CH2";
+        }
+
+        if (selectMap[3])
+        {
+            if (displayText.length() > 0)
+            {
+                displayText += ", ";
+            }
+
+            displayText += "CH3";
+        }
+
+        if (selectMap[4])
+        {
+            if (displayText.length() > 0)
+            {
+                displayText += ", ";
+            }
+
+            displayText += "CH4";
+        }
+
+        drawText((char *)"Selected Channels", 0xFFFF);
+        char *textToDraw = (char *)displayText.c_str();
+        tft.fillRect(0, 10, 160, 8, 0);
+        drawText(textToDraw, 0xFFFF, 1, 0, 10);
+        selectionChanged = false;
+    }
+
+    if (anySelected())
+    {
+        uint8_t current = getSelected();
+        currentOptKnobStates[current][0] = analogRead(A7);
+        currentOptKnobStates[current][1] = analogRead(A8);
+        currentOptKnobStates[current][2] = analogRead(A5);
+        currentOptKnobStates[current][3] = analogRead(A6);
+
+        if (hasThisChanged(lastOptKnobStates[current][0], currentOptKnobStates[current][0]))
+        {
+            tft.fillRect(opt1X, opt1Y, (CHAR_BASE_WIDTH * OPT_FONT_SIZE * 3), (CHAR_BASE_HEIGHT * OPT_FONT_SIZE), 0x0000);
+            uint8_t mapped = currentOptKnobStates[current][0];
+            // uint8_t mapped = map(currentOptKnobStates[current][0], 0, 1024, 0, 127);
+
+            handleOptChange(0, current, mapped);
+
+            drawText((char *)String(mapped).c_str(), 0xFFFF, OPT_FONT_SIZE, opt1X, opt1Y);
+        }
+        if (hasThisChanged(lastOptKnobStates[current][1], currentOptKnobStates[current][1]))
+        {
+            tft.fillRect(opt2X, opt2Y, (CHAR_BASE_WIDTH * OPT_FONT_SIZE * 3), (CHAR_BASE_HEIGHT * OPT_FONT_SIZE), 0x0000);
+
+            uint8_t mapped = currentOptKnobStates[current][1];
+            // uint8_t mapped = map(currentOptKnobStates[current][1], 0, 1024, 0, 127);
+            handleOptChange(1, current, mapped);
+
+            drawText((char *)String(mapped).c_str(), 0xFFFF, OPT_FONT_SIZE, opt2X, opt2Y);
+        }
+        if (hasThisChanged(lastOptKnobStates[current][2], currentOptKnobStates[current][2]))
+        {
+            tft.fillRect(opt3X, opt3Y, (CHAR_BASE_WIDTH * OPT_FONT_SIZE * 3), (CHAR_BASE_HEIGHT * OPT_FONT_SIZE), 0x0000);
+
+            uint8_t mapped = currentOptKnobStates[current][2];
+            // uint8_t mapped = map(currentOptKnobStates[current][2], 0, 1024, 0, 127);
+            handleOptChange(2, current, mapped);
+
+            drawText((char *)String(mapped).c_str(), 0xFFFF, OPT_FONT_SIZE, opt3X, opt3Y);
+        }
+        if (hasThisChanged(lastOptKnobStates[current][3], currentOptKnobStates[current][3]))
+        {
+            tft.fillRect(opt4X, opt4Y, (CHAR_BASE_WIDTH * OPT_FONT_SIZE * 3), (CHAR_BASE_HEIGHT * OPT_FONT_SIZE), 0x0000);
+
+            uint8_t mapped = currentOptKnobStates[current][3];
+            // uint8_t mapped = map(currentOptKnobStates[current][3], 0, 1024, 0, 127);
+            handleOptChange(3, current, mapped);
+
+            drawText((char *)String(mapped).c_str(), 0xFFFF, OPT_FONT_SIZE, opt4X, opt4Y);
+        }
+
+        if (counter >= COUNTER_MAX)
+        {
+            lastOptKnobStates[current][0] = currentOptKnobStates[current][0];
+            lastOptKnobStates[current][1] = currentOptKnobStates[current][1];
+            lastOptKnobStates[current][2] = currentOptKnobStates[current][2];
+            lastOptKnobStates[current][3] = currentOptKnobStates[current][3];
+            counter = 0;
+            // Serial.println("Updated States");
+        }
+        counter++;
+    }
+    else
+    {
+        tft.fillRect(opt1X, opt1Y, 2 * CHAR_BASE_WIDTH * OPT_FONT_SIZE * 3 + OPT_SPACING, 2 * CHAR_BASE_HEIGHT * OPT_FONT_SIZE + OPT_SPACING, 0x0000);
+    }
+}

@@ -1,0 +1,82 @@
+//
+// !!! WARNING !!! AUTO-GENERATED FILE!
+// PLEASE DO NOT MODIFY IT AND USE "platformio.ini":
+// https://docs.platformio.org/page/projectconf/section_env_build.html#build-flags
+//
+{
+    "configurations": [
+        {
+            "name": "PlatformIO",
+            "includePath": [
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/include",
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/src",
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/MIDIUSB/src",
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/Adafruit ST7735 and ST7789 Library",
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/Adafruit GFX Library",
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/Adafruit BusIO",
+                "C:/Users/juliu/.platformio/packages/framework-arduino-sam/libraries/Wire/src",
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/FastLED",
+                "C:/Users/juliu/.platformio/packages/framework-arduino-sam/libraries/SPI/src",
+                "C:/Users/juliu/.platformio/packages/framework-arduino-sam/cores/arduino",
+                "C:/Users/juliu/.platformio/packages/framework-arduino-sam/system/libsam",
+                "C:/Users/juliu/.platformio/packages/framework-arduino-sam/system/CMSIS/CMSIS/Include",
+                "C:/Users/juliu/.platformio/packages/framework-arduino-sam/system/CMSIS/Device/ATMEL",
+                "C:/Users/juliu/.platformio/packages/framework-arduino-sam/variants/arduino_due_x",
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/Adafruit seesaw Library",
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/SD",
+                "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/SoftSPI/src",
+                "C:/Users/juliu/.platformio/packages/framework-arduino-sam/libraries/HID/src",
+                "C:/Users/juliu/.platformio/packages/tool-unity",
+                ""
+            ],
+            "browse": {
+                "limitSymbolsToIncludedHeaders": true,
+                "path": [
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/include",
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/src",
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/MIDIUSB/src",
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/Adafruit ST7735 and ST7789 Library",
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/Adafruit GFX Library",
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/Adafruit BusIO",
+                    "C:/Users/juliu/.platformio/packages/framework-arduino-sam/libraries/Wire/src",
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/FastLED",
+                    "C:/Users/juliu/.platformio/packages/framework-arduino-sam/libraries/SPI/src",
+                    "C:/Users/juliu/.platformio/packages/framework-arduino-sam/cores/arduino",
+                    "C:/Users/juliu/.platformio/packages/framework-arduino-sam/system/libsam",
+                    "C:/Users/juliu/.platformio/packages/framework-arduino-sam/system/CMSIS/CMSIS/Include",
+                    "C:/Users/juliu/.platformio/packages/framework-arduino-sam/system/CMSIS/Device/ATMEL",
+                    "C:/Users/juliu/.platformio/packages/framework-arduino-sam/variants/arduino_due_x",
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/Adafruit seesaw Library",
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/SD",
+                    "c:/Users/juliu/OneDrive/Dokumente/PlatformIO/Projects/MIDI_Controller/.pio/libdeps/due/SoftSPI/src",
+                    "C:/Users/juliu/.platformio/packages/framework-arduino-sam/libraries/HID/src",
+                    "C:/Users/juliu/.platformio/packages/tool-unity",
+                    ""
+                ]
+            },
+            "defines": [
+                "PLATFORMIO=50101",
+                "__SAM3X8E__",
+                "ARDUINO_SAM_DUE",
+                "ARDUINO=10805",
+                "F_CPU=84000000L",
+                "USBCON",
+                "USB_VID=0x2341",
+                "USB_PID=0x003E",
+                "USB_PRODUCT=\"Arduino Due\"",
+                "USB_MANUFACTURER=\"Arduino\"",
+                "ARDUINO_ARCH_SAM",
+                ""
+            ],
+            "cStandard": "c11",
+            "cppStandard": "c++11",
+            "compilerPath": "C:/Users/juliu/.platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-gcc.exe",
+            "compilerArgs": [
+                "-mcpu=cortex-m3",
+                "-mthumb",
+                ""
+            ]
+        }
+    ],
+    "version": 4
+}
